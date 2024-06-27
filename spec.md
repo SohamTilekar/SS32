@@ -4,22 +4,25 @@
 
 ==== Overview ====
 * Minicomputer designed to be implemented with TTL
-* 64 bit data width
-* 64 bit register width
-* 32 bit address width
-* 32 bit instruction width
+* 32 bit data width
+* 32 bit register width
+* 23 bit address width
+* 9 bit instruction width
 * Multi Bus architecture
 
-{10}{4}{4}
+=== Memory Mapping ===
+Program Memory: 0x000000 - 0x7fff98
+IO Memory: 0x7fffa0 - 0x7fffb8
+
 
 === Instructions ===
 ID: 
-    n1: 0000
-    n2: 0001
-    R0: 0010
-    R1: 0011
-    R2: 0100
-    A: 0101
+    n1: 000
+    n2: 001
+    R0: 010
+    R1: 011
+    R2: 100
+    A : 101
 
 NOP : No Operation
 
