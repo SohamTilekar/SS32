@@ -1,3 +1,8 @@
+#bankdef program {
+    #bits 32
+    #outp 32
+}
+
 #subruledef reg {
     R0 => 0x0
     R1 => 0x1
@@ -57,5 +62,5 @@
     ST {SR: reg} - {AR: reg}               => 0x8 @ SR`4 @ AR`4 @ 0`16
     ; MOV
     MOV {SR: reg} - {DR: reg}              => 0x9 @ SR`4 @ 0x0 @ DR`4 @ 0`16
-    HLT                                    => 1`28
+    HLT                                    => 1`32
 }
