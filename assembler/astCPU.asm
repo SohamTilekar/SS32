@@ -49,10 +49,10 @@
     CMP-GE {SR1: reg}, {SR2: reg}          => 0x2 @ SR1`4 @ SR2`4 @  0x0  @ 0x3 @ 0`12
     CMP-LE {SR1: reg}, {SR2: reg}          => 0x2 @ SR1`4 @ SR2`4 @  0x0  @ 0x4 @ 0`12
     ; JUMP
-    JMP       {SR: reg}                    => 0x3 @ SR`4 @  0x0  @ 0`20
-    JIF-C     {SR: reg}                    => 0x3 @ SR`4 @  0x1  @ 0`20
-    JIF-Comp  {SR: reg}                    => 0x3 @ SR`4 @  0x2  @ 0`20
-    JIF-NComp {SR: reg}                    => 0x3 @ SR`4 @  0x3  @ 0`20
+    JMP       {SR: reg}                    => 0x3 @  0x0 @ SR`4 @ 0`20
+    JIF-C     {SR: reg}                    => 0x3 @  0x1 @ SR`4 @ 0`20
+    JIF-Comp  {SR: reg}                    => 0x3 @  0x2 @ SR`4 @ 0`20
+    JIF-NComp {SR: reg}                    => 0x3 @  0x3 @ SR`4 @ 0`20
     ; Memory
     LD {DR: reg} - {adress}                => 0x4 @ DR`4 @ adress`24
     LD {DR: reg} - {SR: reg}               => 0x5 @ SR`4 @ 0x0 @ DR`4 @ 0`16
@@ -62,5 +62,8 @@
     ST {SR: reg} - {AR: reg}               => 0x8 @ SR`4 @ AR`4 @ 0`16
     ; MOV
     MOV {SR: reg} - {DR: reg}              => 0x9 @ SR`4 @ 0x0 @ DR`4 @ 0`16
-    HLT                                    => 1`32
+    OPW-En - {decode_data}                 => 0xA0000 @ decode_data`3 @ 0`1 @ 1`1 @ 0`7
+    OPD1W - {SR: reg}                      => 0xA @ SR`4 @ 0x000 @ 0`3 @ 0`1 @ 0`1 @ 0`7
+    OPD2W - {SR: reg}                      => 0xA @ SR`4 @ 0x000 @ 0`3 @ 1`1 @ 0`1 @ 0`7
+    HLT                                    => 0xffffffff
 }
