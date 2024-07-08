@@ -14,7 +14,8 @@ struct Port {
     Word data2;
     std::bitset<24> **VidArray;
     Logger *logger;
-    Port(Logger *log);
+    bool log;
+    Port(Logger *logger, bool log);
     ~Port();
     void portCycle();
 };
@@ -43,12 +44,13 @@ struct RegisterBank {
 
 struct CPU {
     Logger *logger;
+    bool log;
     RegisterBank registers;
     RAM memory;
     Port ports;
     std::bitset<3> flags; // 0: Barrow, 1: Carry, 2: Compare False
     void ExecInstr();
-    CPU(Logger *log);
+    CPU(Logger *logger, bool log);
     void Execute();
 };
 
