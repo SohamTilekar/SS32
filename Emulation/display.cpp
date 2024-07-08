@@ -61,7 +61,7 @@ void DisplayThread(HWND hwnd, std::bitset<24> **videoData) {
                      reinterpret_cast<LONG_PTR>(videoData));
     while (true) {
         InvalidateRect(hwnd, NULL, FALSE);
-        std::this_thread::sleep_for(std::chrono::milliseconds(62));
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
 }
 
