@@ -26,7 +26,7 @@ void Port::portCycle() {
         unsigned short y = (data1.to_ulong() & 0xFF00) >> 8;
         unsigned int color = (data2.to_ulong() & 0xFFFFFF);
         VidArray[y][x] = color;
-        std::this_thread::sleep_for(std::chrono::seconds(0));
+        std::this_thread::yield();
         break;
     }
     case 2: {

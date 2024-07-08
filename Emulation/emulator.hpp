@@ -4,6 +4,7 @@
 #include <iostream>
 #include <stdio.h>
 #include <string>
+#include <thread>
 
 using Word = std::bitset<32>;
 
