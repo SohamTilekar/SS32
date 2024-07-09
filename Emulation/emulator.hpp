@@ -1,10 +1,17 @@
 #include "logger.cpp"
 #include <bitset>
+#include <chrono>
 #include <fstream>
 #include <iostream>
+#include <process.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string>
 #include <thread>
+#include <windows.h>
+
+#define HEIGHT 256
+#define WIDTH 256
 
 using Word = std::bitset<32>;
 
@@ -12,7 +19,7 @@ struct Port {
     uint8_t decode_data : 3;
     Word data1;
     Word data2;
-    std::bitset<24> **VidArray;
+    uint8_t *buffer;
     Logger *logger;
     bool log;
     Port(Logger *logger, bool log);
@@ -54,4 +61,4 @@ struct CPU {
     void Execute();
 };
 
-void StartVideoDisplay(std::bitset<24> **videoData);
+void StartVideoDisplay(uint8_t *videoData);

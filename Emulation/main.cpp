@@ -500,6 +500,7 @@ int main(int argc, char *argv[]) {
         log_file_path = argv[3];
         log_flag_provided = true;
     }
+
     Logger *logger = nullptr;
     if (log_flag_provided)
         logger = new Logger(log_file_path, log_flag_provided);
@@ -528,9 +529,8 @@ int main(int argc, char *argv[]) {
     }
 
     file.close();
-    std::thread videoDisplayThread(StartVideoDisplay, cpu.ports.VidArray);
+    std::thread videoDisplayThread(StartVideoDisplay, cpu.ports.buffer);
     videoDisplayThread.detach();
-
     cpu.Execute();
     std::cout << "End of program" << std::endl;
     return 0;
