@@ -5,8 +5,8 @@ from PIL import Image
 def image_to_pixel_values(image_path, output_file):
     # Open the image
     with Image.open(image_path) as img:
-        # Resize the image to 256x256
-        img = img.resize((256, 256))
+        # Resize the image to 640x480
+        img = img.resize((640, 480))
         # Ensure the image is in RGB mode
         img = img.convert('RGB')
         # Get the width and height of the image
