@@ -6,6 +6,9 @@ Port::Port(Logger *logger, bool log) {
     data2 = 0;
     this->log = log;
     buffer = new uint8_t[WIDTH * HEIGHT * 4];
+    // for (int i = 0; i < WIDTH * HEIGHT * 4; i++) {
+    //     buffer[i] = uint8_t(rand());
+    // }
     this->logger = logger;
 }
 

@@ -13,7 +13,6 @@ void CPU::ExecInstr() {
         // NOP
         if (log)
             logger->log("NOP\n");
-        exit(0);
     } else if ((instr >> 28).to_ulong() == 1) {
         // ALUCalc
         if (log)
@@ -39,7 +38,8 @@ void CPU::ExecInstr() {
                     ", Result = " +
                     std::to_string(registers.registers[DR].data.to_ulong()) +
                     "\n");
-            flags[1] = (registers.registers[DR].data.to_ulong() > UINT32_MAX);
+            flags[0] = (registers.registers[DR].data.to_ulong() > UINT32_MAX);
+            flags[1] = (registers.registers[DR].data.to_ulong() == 0);
             break;
         }
         case 1: { // Subtract
@@ -56,6 +56,7 @@ void CPU::ExecInstr() {
                     std::to_string(registers.registers[DR].data.to_ulong()) +
                     "\n");
             flags[0] = (registers.registers[DR].data.to_ulong() < 0);
+            flags[1] = (registers.registers[DR].data.to_ulong() == 0);
             break;
         }
         case 2: { // Multiply
@@ -84,6 +85,7 @@ void CPU::ExecInstr() {
                     ", Result = " +
                     std::to_string(registers.registers[DR].data.to_ulong()) +
                     "\n");
+            flags[1] = (registers.registers[DR].data.to_ulong() == 0);
             break;
         }
         case 4: { // AND
@@ -98,6 +100,7 @@ void CPU::ExecInstr() {
                     ", Result = " +
                     std::to_string(registers.registers[DR].data.to_ulong()) +
                     "\n");
+            flags[1] = (registers.registers[DR].data.to_ulong() == 0);
             break;
         }
         case 5: { // OR
@@ -112,6 +115,7 @@ void CPU::ExecInstr() {
                     ", Result = " +
                     std::to_string(registers.registers[DR].data.to_ulong()) +
                     "\n");
+            flags[1] = (registers.registers[DR].data.to_ulong() == 0);
             break;
         }
         case 6: { // NOT
@@ -124,6 +128,7 @@ void CPU::ExecInstr() {
                     ", Result = " +
                     std::to_string(registers.registers[DR].data.to_ulong()) +
                     "\n");
+            flags[1] = (registers.registers[DR].data.to_ulong() == 0);
             break;
         }
         case 7: { // NAND
@@ -138,6 +143,7 @@ void CPU::ExecInstr() {
                     ", Result = " +
                     std::to_string(registers.registers[DR].data.to_ulong()) +
                     "\n");
+            flags[1] = (registers.registers[DR].data.to_ulong() == 0);
             break;
         }
         case 8: { // XOR
@@ -152,6 +158,7 @@ void CPU::ExecInstr() {
                     ", Result = " +
                     std::to_string(registers.registers[DR].data.to_ulong()) +
                     "\n");
+            flags[1] = (registers.registers[DR].data.to_ulong() == 0);
             break;
         }
         case 9: { // XNOR
@@ -166,6 +173,7 @@ void CPU::ExecInstr() {
                     ", Result = " +
                     std::to_string(registers.registers[DR].data.to_ulong()) +
                     "\n");
+            flags[1] = (registers.registers[DR].data.to_ulong() == 0);
             break;
         }
         case 10: { // Shift Left
@@ -179,6 +187,7 @@ void CPU::ExecInstr() {
                     ", Result = " +
                     std::to_string(registers.registers[DR].data.to_ulong()) +
                     "\n");
+            flags[1] = (registers.registers[DR].data.to_ulong() == 0);
             break;
         }
         case 11: { // Shift Right
@@ -192,6 +201,7 @@ void CPU::ExecInstr() {
                     ", Result = " +
                     std::to_string(registers.registers[DR].data.to_ulong()) +
                     "\n");
+            flags[1] = (registers.registers[DR].data.to_ulong() == 0);
             break;
         }
         case 12: { // Arithmetic Shift Right
@@ -207,6 +217,7 @@ void CPU::ExecInstr() {
                     ", Result = " +
                     std::to_string(registers.registers[DR].data.to_ulong()) +
                     "\n");
+            flags[1] = (registers.registers[DR].data.to_ulong() == 0);
             break;
         }
         case 13: { // Rotate Left
@@ -229,6 +240,7 @@ void CPU::ExecInstr() {
                     ", Result = " +
                     std::to_string(registers.registers[DR].data.to_ulong()) +
                     "\n");
+            flags[1] = (registers.registers[DR].data.to_ulong() == 0);
             break;
         }
         case 15: { // 0
@@ -240,6 +252,7 @@ void CPU::ExecInstr() {
                     ", Result = " +
                     std::to_string(registers.registers[DR].data.to_ulong()) +
                     "\n");
+            flags[1] = (registers.registers[DR].data.to_ulong() == 0);
             break;
         }
         default:
@@ -321,43 +334,133 @@ void CPU::ExecInstr() {
         if (log)
             logger->log("Jump: ");
         unsigned short jump_if =
-            (instr >> 24).to_ulong() & 0xF; // Extract bits 5-8
+            (instr >> 24).to_ulong() & 0x7; // Extract bits 6-8
         if (log)
             logger->log("Jump if " + std::to_string(jump_if));
-        unsigned short jump_to =
-            (instr >> 20).to_ulong() & 0xF; // Extract bits 9-12
-        if (jump_if == 0) {
-            // Jump
-            if (log)
-                logger->log(", to " + std::to_string(jump_to));
-            registers.PC.data =
-                (8 << registers.registers[jump_to].data.to_ulong()) >> 8;
-        } else if (jump_if == 1 && flags[1] == 1) {
-            // Jump if Carry
-            if (log)
-                logger->log("Jump if Carry to " + std::to_string(jump_to));
-            registers.PC.data =
-                (8 << registers.registers[jump_to].data.to_ulong()) >> 8;
-        } else if (jump_if == 2 && flags[2] == 1) {
-            // Jump if Compare True
-            if (log)
-                logger->log("Jump if Compare True to " +
-                            std::to_string(jump_to));
-            registers.PC.data =
-                (8 << registers.registers[jump_to].data.to_ulong()) >> 8;
-        } else if (jump_if == 3 && flags[2] == 0) {
-            // Jump if Compare False
-            if (log)
-                logger->log("Jump if Compare False to " +
-                            std::to_string(jump_to));
-            registers.PC.data =
-                (8 << registers.registers[jump_to].data.to_ulong()) >> 8;
+        bool jump_from = (instr >> 27).to_ulong() & 0x1;
+        if (jump_from) {
+            unsigned long jump_to =
+                instr.to_ulong() & 0x00FFFFFF; // Extract bits 9-32
+            if (jump_if == 0) {
+                // Jump
+                if (log)
+                    logger->log(", to " + std::to_string(jump_to));
+                registers.PC.data = jump_to;
+            } else if (jump_if == 1) {
+                // Jump if Carry
+                if (log)
+                    logger->log("Jump if Carry to " + std::to_string(jump_to));
+                if (flags[0] == 1)
+                    registers.PC.data = jump_to;
+            } else if (jump_if == 2) {
+                // Jump if Not Carry
+                if (log)
+                    logger->log("Jump if Not Carry to " +
+                                std::to_string(jump_to));
+                if (flags[0] == 0)
+                    registers.PC.data = jump_to;
+            } else if (jump_if == 3) {
+                // Jump if compare
+                if (log)
+                    logger->log("Jump if Compare to " +
+                                std::to_string(jump_to));
+                if (flags[2] == 1)
+                    registers.PC.data = jump_to;
+            } else if (jump_if == 4) {
+                // Jump if Not compare
+                if (log)
+                    logger->log("Jump if Not Compare to " +
+                                std::to_string(jump_to));
+                if (flags[2] == 0)
+                    registers.PC.data = jump_to;
+            } else if (jump_if == 5) {
+                // Jump if Zero
+                if (log)
+                    logger->log("Jump if Zero to " + std::to_string(jump_to));
+                if (flags[0] == 1)
+                    registers.PC.data = jump_to;
+            } else if (jump_if == 6) {
+                // Jump if Not Zero
+                if (log)
+                    logger->log("Jump if Not Zero to " +
+                                std::to_string(jump_to));
+                if (flags[0] == 0)
+                    registers.PC.data = jump_to;
+            } else {
+                if (log)
+                    logger->log("Unknown jump condition");
+                if (log)
+                    logger->log("Halt");
+                exit(0);
+            }
         } else {
-            if (log)
-                logger->log("Unknown jump condition");
-            if (log)
-                logger->log("Halt");
-            exit(0);
+            unsigned short jump_to =
+                (instr >> 20).to_ulong() & 0xF; // Extract bits 9-12
+            if (jump_if == 0) {
+                // Jump
+                if (log)
+                    logger->log(", to " + std::to_string(jump_to));
+                registers.PC.data =
+                    (8 << registers.registers[jump_to].data.to_ulong()) >> 8;
+            } else if (jump_if == 1) {
+                // Jump if Carry
+                if (log)
+                    logger->log("Jump if Carry to " + std::to_string(jump_to));
+                if (flags[0] == 1)
+                    registers.PC.data =
+                        (8 << registers.registers[jump_to].data.to_ulong()) >>
+                        8;
+            } else if (jump_if == 2) {
+                // Jump if Not Carry
+                if (log)
+                    logger->log("Jump if Not Carry to " +
+                                std::to_string(jump_to));
+                if (flags[0] == 0)
+                    registers.PC.data =
+                        (8 << registers.registers[jump_to].data.to_ulong()) >>
+                        8;
+            } else if (jump_if == 3) {
+                // Jump if compare
+                if (log)
+                    logger->log("Jump if Compare to " +
+                                std::to_string(jump_to));
+                if (flags[2] == 1)
+                    registers.PC.data =
+                        (8 << registers.registers[jump_to].data.to_ulong()) >>
+                        8;
+            } else if (jump_if == 4) {
+                // Jump if Not compare
+                if (log)
+                    logger->log("Jump if Not Compare to " +
+                                std::to_string(jump_to));
+                if (flags[2] == 0)
+                    registers.PC.data =
+                        (8 << registers.registers[jump_to].data.to_ulong()) >>
+                        8;
+            } else if (jump_if == 5) {
+                // Jump if Zero
+                if (log)
+                    logger->log("Jump if Zero to " + std::to_string(jump_to));
+                if (flags[1] == 1)
+                    registers.PC.data =
+                        (8 << registers.registers[jump_to].data.to_ulong()) >>
+                        8;
+            } else if (jump_if == 6) {
+                // Jump if Not Zero
+                if (log)
+                    logger->log("Jump if Not Zero to " +
+                                std::to_string(jump_to));
+                if (flags[1] == 0)
+                    registers.PC.data =
+                        (8 << registers.registers[jump_to].data.to_ulong()) >>
+                        8;
+            } else {
+                if (log)
+                    logger->log("Unknown jump condition");
+                if (log)
+                    logger->log("Halt");
+                exit(0);
+            }
         }
     } else if ((instr >> 28).to_ulong() == 4) {
         // Load
@@ -436,27 +539,27 @@ void CPU::ExecInstr() {
     } else if ((instr >> 28).to_ulong() == 11) {
         if (log)
             logger->log("Halt\n");
-        exit(0);
+        exit(1);
     } else if ((instr >> 28).to_ulong() == 12) {
         if (log)
             logger->log("Halt\n");
-        exit(0);
+        exit(1);
     } else if ((instr >> 28).to_ulong() == 13) {
         if (log)
             logger->log("Halt\n");
-        exit(0);
+        exit(1);
     } else if ((instr >> 28).to_ulong() == 14) {
         if (log)
             logger->log("Halt\n");
-        exit(0);
+        exit(1);
     } else if ((instr >> 28).to_ulong() == 15) {
         if (log)
             logger->log("Halt\n");
-        exit(0);
+        exit(1);
     } else {
         if (log)
             logger->log("Unknown instruction\nHalt\n");
-        exit(0);
+        exit(1);
     }
     registers.PC.data = registers.PC.data.to_ulong() + 1;
     if (log)
@@ -466,6 +569,11 @@ void CPU::ExecInstr() {
 
 void CPU::Execute() {
     while (true) {
+        if (this->registers.PC.data.to_ulong() >= 16777216) {
+            if (log)
+                logger->log("End of program\n");
+            break;
+        }
         ExecInstr();
     }
 
@@ -527,7 +635,6 @@ int main(int argc, char *argv[]) {
         // Store the value in RAM at the corresponding index
         cpu.memory.data[index++] = Word(value);
     }
-
     file.close();
     std::thread videoDisplayThread(StartVideoDisplay, cpu.ports.buffer);
     videoDisplayThread.detach();
