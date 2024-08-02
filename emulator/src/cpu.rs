@@ -4,9 +4,10 @@ use rand::random;
 mod registers;
 
 pub struct CPU {
-    registers: Registers,
-    ram: Box<[u32]>, // Allocating on the heap
+    pub registers: Registers,
+    pub ram: Box<[u32]>, // Allocating on the heap
     log: bool,
+    seed: u32,
 }
 
 impl CPU {
@@ -38,12 +39,22 @@ impl CPU {
             registers: Registers::new(),
             ram: ram.into_boxed_slice(),
             log,
+            seed: value,
         };
     }
-    pub fn execute_instruction(&mut self, interrupt: bool, interrupt_number: u8) {
-        if interrupt {
-
+    pub fn reset(&mut self) {
+        self.registers = Registers::new();
+        let mut value: u32 = self.seed;
+        for i in 0..16777216 {
+            value = value.wrapping_mul(1664525).wrapping_add(1013904223);
+            self.ram[i] = value;
         }
+    }
+    pub fn restart(&mut self) {
+        *self = CPU::new(Vec::new(), self.log);
+    }
+    pub fn execute_instruction(&mut self, interrupt: bool, _interrupt_number: u8) {
+        if interrupt {}
         // Fetch instruction from memory
         if self.registers.pc >= self.ram.len() {
             println!("PC out of bounds");
@@ -583,6 +594,7 @@ impl CPU {
                         (self.ram[(self.registers.sp & 0xFFFFFF) as usize] & 0xFFFFFF) as usize;
                     self.registers.sp = self.registers.sp.wrapping_add(1);
                     let flags = self.ram[(self.registers.sp & 0xFFFFFF) as usize];
+                    self.registers.sp = self.registers.sp.wrapping_add(1);
                     self.registers.carry_f = flags & 0x01 == 1;
                     self.registers.zero_f = flags >> 1 & 0x01 == 1;
                     self.registers.comp_f = flags >> 2 & 0x01 == 1;
