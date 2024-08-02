@@ -21,6 +21,7 @@ impl CPU {
             trace!("RAM Filled with random values");
         }
         let mut value: u32 = random(); // Seed value
+        let seed = value;
         for i in 0..16777216 {
             // Simple LCG formula: value = (value * 1664525 + 1013904223) % 2^32
             if i < initial_ram_content.len() {
@@ -39,7 +40,7 @@ impl CPU {
             registers: Registers::new(),
             ram: ram.into_boxed_slice(),
             log,
-            seed: value,
+            seed,
         };
     }
     pub fn reset(&mut self) {
