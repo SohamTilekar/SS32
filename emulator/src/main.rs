@@ -43,87 +43,111 @@ impl GUI {
     }
 }
 
+fn display_image_from_u32_array(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    ram: Box<[u32]>,
+    st_adr: u32,
+    width: u32,
+    height: u32,
+) {
+    let mut pixels = vec![Default::default(); (width * height * 3) as usize];
+    for i in 0..(width * height) {
+        let pixel = ram[(st_adr + i) as usize];
+        let r = ((pixel >> 16) & 0xFF) as u8;
+        let g = ((pixel >> 8) & 0xFF) as u8;
+        let b = (pixel & 0xFF) as u8;
+        pixels[(i * 3) as usize] = r;
+        pixels[(i * 3 + 1) as usize] = g;
+        pixels[(i * 3 + 2) as usize] = b;
+    }
+    let color_image = egui::ColorImage::from_rgb([width as usize, height as usize], &pixels);
+    let texture: egui::TextureHandle =
+        ctx.load_texture("image", color_image, egui::TextureOptions::default());
+    ui.image(&texture, [width as f32, height as f32]);
+}
+
 impl eframe::App for GUI {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        // Central panel for general information and control buttons
         let mut cpu = self.cpu.lock().unwrap();
-
-        // Left panel for the small screen
-        egui::SidePanel::left("left_panel").resizable(false).show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.heading("Screen");
-                // Assuming you have a method to draw the screen
-                ui.allocate_exact_size(egui::vec2(640.0, 480.0), egui::Sense::hover());
-            });
-        });
-
-        // Central panel for general information
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::TopBottomPanel::top("TopPanel").show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("SS32 Emulator");
             });
-
-            ui.separator();
-
-            // Control Buttons Section
-            ui.horizontal(|ui| {
-                if self.running.load(Ordering::SeqCst) {
-                    ui.label("Status: Running");
-                    if ui.button("Stop").clicked() {
-                        self.stop_execution();
-                    }
-                } else {
-                    ui.label("Status: Stopped");
-                    if ui.button("Start").clicked() {
-                        self.start_execution();
-                    }
-                    if ui.button("Step").clicked() {
-                        cpu.execute_instruction(false, 0);
-                    }
-                }
-                if ui.button("Reset").clicked() {
-                    cpu.reset();
-                }
-                if ui.button("Restart").clicked() {
-                    cpu.restart();
-                }
-            });
-
-            ui.separator();
         });
-
-        // Right panel for register information
-        egui::SidePanel::right("right_panel").show(ctx, |ui| {
-            ui.heading("Registers");
-
-            ui.separator();
-
-            // Register Information Section
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("PC:");
-                    ui.monospace(format!("0x{:08x}", cpu.registers.pc));
-                });
-                ui.horizontal(|ui| {
-                    ui.label("SP:");
-                    ui.monospace(format!("0x{:08x}", cpu.registers.sp));
-                });
-                ui.horizontal(|ui| {
-                    ui.label("RETI:");
-                    ui.monospace(format!("0x{:08x}", cpu.registers.reti));
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Privilege:");
-                    ui.monospace(format!("{}", cpu.registers.privilege));
-                });
-                for i in 0..16 {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("R{}:", i));
-                        ui.monospace(format!("0x{:08x}", cpu.registers[i]));
+        // Left panel for the small screen
+        egui::SidePanel::left("left_panel")
+            .resizable(false)
+            .exact_width(640.0)
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.heading("Screen");
+                    ui.separator();
+                    display_image_from_u32_array(ui, ctx, cpu.ram.clone(), 0xFB5000, 640, 480);
+                    ui.separator();
+                    ui.horizontal_top(|ui| {
+                        // Control Buttons Section
+                        if self.running.load(Ordering::SeqCst) {
+                            ui.label("Status: Running");
+                            if ui.button("Stop").clicked() {
+                                self.stop_execution();
+                            }
+                        } else {
+                            ui.label("Status: Stopped");
+                            if ui.button("Start").clicked() {
+                                self.start_execution();
+                            }
+                            if ui.button("Step").clicked() {
+                                cpu.execute_instruction(false, 0);
+                            }
+                        }
+                        if ui.button("Reset").clicked() {
+                            cpu.reset();
+                        }
+                        if ui.button("Restart").clicked() {
+                            cpu.restart();
+                        }
                     });
-                }
+                });
+                ui.separator()
             });
-        });
+        // Right panel for register information
+        egui::SidePanel::right("right_panel")
+            // .resizable(false)
+            // .min_width(200.0)
+            .show(ctx, |ui| {
+                ui.heading("Registers");
 
+                ui.separator();
+
+                // Register Information Section
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("PC:");
+                        ui.monospace(format!("0x{:08x}", cpu.registers.pc));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("SP:");
+                        ui.monospace(format!("0x{:08x}", cpu.registers.sp));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("RETI:");
+                        ui.monospace(format!("0x{:08x}", cpu.registers.reti));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Privilege:");
+                        ui.monospace(format!("{}", cpu.registers.privilege));
+                    });
+                    for i in 0..16 {
+                        ui.horizontal(|ui| {
+                            ui.label(format!("R{}:", i));
+                            ui.monospace(format!("0x{:08x}", cpu.registers[i]));
+                        });
+                    }
+                });
+            });
+        egui::CentralPanel::default().show(ctx, |_ui| {});
         if self.running.load(Ordering::SeqCst) {
             ctx.request_repaint();
         }
