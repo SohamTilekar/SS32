@@ -5,3 +5,10 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8"
+log = "0.4"
+fast_log = "1.7"
+egui = "0.22.0"
+eframe = "0.22.0"
+image = "0.25.2"
+rfd = "0.14.1"
+winapi = { version = "0.3", features = ["winuser", "windef"] }

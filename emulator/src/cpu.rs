@@ -6,7 +6,7 @@ mod registers;
 pub struct CPU {
     pub registers: Registers,
     pub ram: Box<[u32]>, // Allocating on the heap
-    log: bool,
+    pub log: bool,
     seed: u32,
 }
 

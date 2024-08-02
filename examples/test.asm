@@ -1,0 +1,27 @@
+; R0 : C
+; R1 : 1
+; R2 : N
+
+LDI R1 - 1
+LDI R2 - 10
+OPW-En - 2
+loop:
+    OPD2W - R0
+    ADD R0 - R0, R1
+    OPD1W - R0
+    CMP-EQ R0, R2
+    JP-NCMP loop
+HLT
+
+00000000
+6100000b
+62000001
+63fb4fff
+a0000280
+10200000
+10350000
+11210000
+50140000
+84500000
+38000004
+ffffffff

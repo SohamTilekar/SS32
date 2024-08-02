@@ -25,7 +25,7 @@
 #ruledef {
     NOP => 0x0 @ 0`28
     ; Arithmetic Operations
-    ADD {DR: reg} - {SR1: reg}, {SR2: reg} => 0x1 @ SR1`4 @ SR2`4 @ DR`4 @ 0x0 @ 0`12
+    ADD {DR: reg} - {SR1: reg}, {SR2: reg}  => 0x1 @ SR1`4 @ SR2`4 @ DR`4 @ 0x0 @ 0`12
     SUB {DR: reg} - {SR1: reg}, {SR2: reg} => 0x1 @ SR1`4 @ SR2`4 @ DR`4 @ 0x1 @ 0`12
     MUL {DR: reg} - {SR1: reg}, {SR2: reg} => 0x1 @ SR1`4 @ SR2`4 @ DR`4 @ 0x2 @ 0`12
     NIG {DR: reg} - {SR1: reg}             => 0x1 @ SR1`4 @  0x0  @ DR`4 @ 0x3 @ 0`12
@@ -50,20 +50,34 @@
     CMP-LE {SR1: reg}, {SR2: reg}          => 0x2 @ SR1`4 @ SR2`4 @  0x0  @ 0x4 @ 0`12
     ; JUMP
     JMP       {SR: reg}                    => 0x3 @  0x0 @ SR`4 @ 0`20
-    JIF-C     {SR: reg}                    => 0x3 @  0x1 @ SR`4 @ 0`20
-    JIF-Comp  {SR: reg}                    => 0x3 @  0x2 @ SR`4 @ 0`20
-    JIF-NComp {SR: reg}                    => 0x3 @  0x3 @ SR`4 @ 0`20
+    JMP       {value}                      => 0x3 @  1`1 @ 0`3 @ value`24
+    JP-Cr     {SR: reg}                    => 0x3 @  0x1 @ SR`4 @ 0`20
+    JP-Cr     {value}                      => 0x3 @  1`1 @ 1`3 @ value`24
+    JP-NCr    {SR: reg}                    => 0x3 @  0x2 @ SR`4 @ 0`20
+    JP-NCr    {value}                      => 0x3 @  1`1 @ 2`3 @ value`24
+    JP-CMP    {SR: reg}                    => 0x3 @  0x3 @ SR`4 @ 0`20
+    JP-CMP    {value}                      => 0x3 @  1`1 @ 3`3 @ value`24
+    JP-NCMP   {SR: reg}                    => 0x3 @  0x4 @ SR`4 @ 0`20
+    JP-NCMP   {value}                      => 0x3 @  1`1 @ 4`3 @ value`24
+    JP-Zr     {SR: reg}                    => 0x3 @  0x5 @ SR`4 @ 0`20
+    JP-Zr     {value}                      => 0x3 @  1`1 @ 5`3 @ value`24
     ; Memory
     LD {DR: reg} - {adress}                => 0x4 @ DR`4 @ adress`24
-    LD {DR: reg} - {SR: reg}               => 0x5 @ SR`4 @ 0x0 @ DR`4 @ 0`16
+    LD {DR: reg} - {SR: reg}               => 0x5 @ 0x0 @ SR`4 @ DR`4 @ 0`16
     LDI{DR: reg} - {value}                 => 0x6 @ DR`4 @ value`24
 
+    ST {SR: reg} - {AR: reg}               => 0x8 @ SR`4 @ AR`4 @ 0`20
     ST {SR: reg} - {adress}                => 0x7 @ SR`4 @ adress`24
-    ST {SR: reg} - {AR: reg}               => 0x8 @ SR`4 @ AR`4 @ 0`16
     ; MOV
     MOV {SR: reg} - {DR: reg}              => 0x9 @ SR`4 @ 0x0 @ DR`4 @ 0`16
+    MOV [{SR: reg}] - {DR: reg}            => 0x5 @ 0x0 @ SR`4 @ DR`4 @ 0`16
+    MOV {SR: reg} - [{AR: reg}]            => 0x8 @ SR`4 @ AR`4 @ 0`20
+    ; Port
     OPW-En - {decode_data}                 => 0xA0000 @ decode_data`3 @ 0`1 @ 1`1 @ 0`7
     OPD1W - {SR: reg}                      => 0xA @ SR`4 @ 0x000 @ 0`3 @ 0`1 @ 0`1 @ 0`7
     OPD2W - {SR: reg}                      => 0xA @ SR`4 @ 0x000 @ 0`3 @ 1`1 @ 0`1 @ 0`7
+    ; Stack
+    PUSH {SR: reg}                         => 0xB @ SR`4 @ 0x000 @ 0`3 @ 0`1 @ 0`1 @ 0`7
+    
     HLT                                    => 0xffffffff
 }

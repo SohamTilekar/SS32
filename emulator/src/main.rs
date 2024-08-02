@@ -1,5 +1,6 @@
 use eframe;
 use egui;
+use rfd::FileDialog;
 use std::env;
 use std::fs::File;
 use std::io::{self, BufRead};
@@ -108,6 +109,23 @@ impl eframe::App for GUI {
                         if ui.button("Restart").clicked() {
                             cpu.restart();
                         }
+                        if ui.button("⬇ Load Ram").clicked() {
+                            let path = FileDialog::new()
+                                .add_filter("hex", &["hex", "hex"])
+                                .pick_file();
+                            if let Some(path) = path {
+                                let mut initial_ram_content: Vec<u32> = Vec::new();
+                                let file = File::open(&path).unwrap();
+                                let reader = io::BufReader::new(file);
+                                for line in reader.lines() {
+                                    let line = line.unwrap();
+                                    let number = u32::from_str_radix(&line, 16)
+                                        .expect("Failed to parse hex string");
+                                    initial_ram_content.push(number);
+                                }
+                                *cpu = cpu::CPU::new(initial_ram_content, cpu.log);
+                            }
+                        }
                     });
                 });
                 ui.separator()
@@ -201,7 +219,6 @@ fn main() -> Result<(), eframe::Error> {
     return eframe::run_native(
         "SS32",
         eframe::NativeOptions {
-            // vsync: false,
             ..Default::default()
         },
         Box::new(|cc| Box::new(GUI::new(cc, cpu))),
