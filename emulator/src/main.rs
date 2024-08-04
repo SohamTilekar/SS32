@@ -12,6 +12,8 @@ use std::sync::{
 use std::thread;
 mod cpu;
 
+static mut HZ: f64 = 0.0;
+
 struct GUI {
     cpu: Arc<Mutex<cpu::CPU>>,
     running: Arc<AtomicBool>,
@@ -29,11 +31,51 @@ impl GUI {
         let cpu_ref = Arc::clone(&self.cpu);
         let running = Arc::clone(&self.running);
         running.store(true, Ordering::SeqCst);
-
         thread::spawn(move || {
             while running.load(Ordering::SeqCst) {
+                let time: f32;
+                let l_clock: u64;
                 if let Ok(mut cpu) = cpu_ref.lock() {
+                    l_clock = cpu.clock;
+                    // Assuming the cpu struct has a field `last_update_time` of type `std::time::Instant`
+                    let x = 1e9 / (std::time::Instant::now() - cpu.l_executed_t).as_nanos() as f64;
                     cpu.execute_instruction(false, 0);
+                    let current_hz = x * (cpu.clock - l_clock) as f64;
+                    let now = std::time::Instant::now();
+                    if now.duration_since(cpu.last_update_time).as_secs() >= 1 {
+                        cpu.last_update_time = now;
+                        cpu.hz = unsafe { HZ };
+                        unsafe { HZ = current_hz };
+                    } else {
+                        unsafe { HZ = (cpu.hz + current_hz) / 2.0 };
+                    } // Sealing the clock speed based on the clock speed/second
+                    time = (cpu.clock - l_clock) as f32 / cpu.clock_speed;
+                    if cpu.run_fast {
+                        continue; // Skip the sleep if running at max speed
+                    }
+                } else {
+                    time = 0.0;
+                    l_clock = 0;
+                }
+                if time != 0.0 {
+                    let sleep_interval = 0.05; // 50 milliseconds
+                    let mut remaining_time = time;
+                    while remaining_time > 0.0 {
+                        if remaining_time < sleep_interval {
+                            std::thread::sleep(std::time::Duration::from_secs_f32(remaining_time));
+                            remaining_time = 0.0;
+                        } else {
+                            std::thread::sleep(std::time::Duration::from_secs_f32(sleep_interval));
+                            remaining_time -= sleep_interval;
+                        }
+                        // Check if cpu.clock_speed has changed
+                        if let Ok(cpu) = cpu_ref.lock() {
+                            let new_time = (cpu.clock - l_clock) as f32 / cpu.clock_speed;
+                            if new_time != time || cpu.run_fast {
+                                break;
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -70,13 +112,63 @@ fn display_image_from_u32_array(
 
 impl eframe::App for GUI {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
-        // Central panel for general information and control buttons
         let mut cpu = self.cpu.lock().unwrap();
+
+        // Top panel for general information and control buttons
         egui::TopBottomPanel::top("TopPanel").show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("SS32 Emulator");
             });
+
+            ui.vertical_centered(|ui| {
+                ui.horizontal_centered(|ui| {
+                    // Control Buttons Section
+                    if self.running.load(Ordering::SeqCst) {
+                        ui.label("Status: Running");
+                        if ui.button("Stop").clicked() {
+                            self.stop_execution();
+                        }
+                    } else {
+                        ui.label("Status: Stopped");
+                        if ui.button("Start").clicked() {
+                            self.start_execution();
+                        }
+                        if ui.button("Step").clicked() {
+                            cpu.execute_instruction(false, 0);
+                        }
+                    }
+                    if ui.button("Reset").clicked() {
+                        cpu.reset();
+                    }
+                    if ui.button("Restart").clicked() {
+                        cpu.restart();
+                    }
+                    if ui.button("⬇ Load Ram").clicked() {
+                        let path = FileDialog::new()
+                            .add_filter("hex", &["hex", "hex"])
+                            .pick_file();
+                        if let Some(path) = path {
+                            let mut initial_ram_content: Vec<u32> = Vec::new();
+                            let file = File::open(&path).unwrap();
+                            let reader = io::BufReader::new(file);
+                            for line in reader.lines() {
+                                let line = line.unwrap();
+                                let number = u32::from_str_radix(&line, 16)
+                                    .expect("Failed to parse hex string");
+                                initial_ram_content.push(number);
+                            }
+                            *cpu = cpu::CPU::new(initial_ram_content, cpu.log, cpu.clock_speed);
+                        }
+                    }
+                    ui.checkbox(&mut cpu.run_fast, "Run At Max Speed");
+                    ui.add(
+                        egui::Slider::new(&mut cpu.clock_speed, 0.1..=100.0).text("Clock Speed"),
+                    );
+                    ui.label(format!("Hz: {:.5}", cpu.hz));
+                });
+            });
         });
+
         // Left panel for the small screen
         egui::SidePanel::left("left_panel")
             .resizable(false)
@@ -87,56 +179,15 @@ impl eframe::App for GUI {
                     ui.separator();
                     display_image_from_u32_array(ui, ctx, cpu.ram.clone(), 0xFB5000, 640, 480);
                     ui.separator();
-                    ui.horizontal_top(|ui| {
-                        // Control Buttons Section
-                        if self.running.load(Ordering::SeqCst) {
-                            ui.label("Status: Running");
-                            if ui.button("Stop").clicked() {
-                                self.stop_execution();
-                            }
-                        } else {
-                            ui.label("Status: Stopped");
-                            if ui.button("Start").clicked() {
-                                self.start_execution();
-                            }
-                            if ui.button("Step").clicked() {
-                                cpu.execute_instruction(false, 0);
-                            }
-                        }
-                        if ui.button("Reset").clicked() {
-                            cpu.reset();
-                        }
-                        if ui.button("Restart").clicked() {
-                            cpu.restart();
-                        }
-                        if ui.button("⬇ Load Ram").clicked() {
-                            let path = FileDialog::new()
-                                .add_filter("hex", &["hex", "hex"])
-                                .pick_file();
-                            if let Some(path) = path {
-                                let mut initial_ram_content: Vec<u32> = Vec::new();
-                                let file = File::open(&path).unwrap();
-                                let reader = io::BufReader::new(file);
-                                for line in reader.lines() {
-                                    let line = line.unwrap();
-                                    let number = u32::from_str_radix(&line, 16)
-                                        .expect("Failed to parse hex string");
-                                    initial_ram_content.push(number);
-                                }
-                                *cpu = cpu::CPU::new(initial_ram_content, cpu.log);
-                            }
-                        }
-                    });
                 });
-                ui.separator()
             });
+
         // Right panel for register information
         egui::SidePanel::right("right_panel")
-            // .resizable(false)
-            // .min_width(200.0)
+            .resizable(false)
+            .min_width(200.0)
             .show(ctx, |ui| {
                 ui.heading("Registers");
-
                 ui.separator();
 
                 // Register Information Section
@@ -163,9 +214,88 @@ impl eframe::App for GUI {
                             ui.monospace(format!("0x{:08x}", cpu.registers[i]));
                         });
                     }
+                    ui.separator();
                 });
             });
-        egui::CentralPanel::default().show(ctx, |_ui| {});
+
+        // Central panel for additional information or logs if needed
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Debug Information");
+            ui.separator();
+
+            // Instruction Execution
+            ui.label(format!("Current Instruction: 0x{:08x}", cpu.ir));
+            ui.label(format!("Opcode: 0x{:02x}", cpu.opcode));
+            ui.label(format!("DR: {}", cpu.dr));
+            ui.label(format!("SR2: {}", cpu.sr2));
+            ui.label(format!("SR1: {}", cpu.sr1));
+            ui.label(format!("Immediate: {}", cpu.immediate));
+
+            ui.separator();
+
+            // CPU State
+            ui.label(format!("Cycle Count: {}", cpu.clock));
+            ui.label(format!(
+                "Privilege Level: {}",
+                if cpu.registers.privilege { 1 } else { 0 }
+            ));
+
+            // Flags
+            ui.label(format!("Zero Flag: {}", cpu.registers.zero_f));
+            ui.label(format!("Carry Flag: {}", cpu.registers.carry_f));
+            ui.label(format!("Compare Flag: {}", cpu.registers.comp_f));
+
+            ui.separator();
+
+            // Memory
+            ui.label("Recently Accessed Memory:");
+            let (address, value) = &cpu.recent_memory_accesses;
+            ui.label(format!("0x{:08x}: 0x{:08x}", address, value));
+
+            ui.separator();
+            let a_h = ui.available_height() - 20f32;
+            ui.horizontal(|ui| {
+                // Stack
+                let height = egui::TextStyle::Body.resolve(ui.style()).size;
+                ui.vertical_centered(|ui| {
+                    ui.label("Stack Contents:");
+                    egui::ScrollArea::vertical()
+                        .id_source("stack")
+                        .min_scrolled_height(a_h)
+                        .show_rows(
+                            ui,
+                            height,
+                            cpu.ram[0xFFF400..=0xFFFFFF].len(),
+                            |ui, row_range| {
+                                for i in row_range {
+                                    let Some(value) = cpu.ram.get(0xFFF400 + i) else {
+                                        continue;
+                                    };
+                                    ui.label(format!("SP-{:03x}: 0x{:08x}", i, value));
+                                }
+                            },
+                        );
+                });
+                ui.separator();
+                // RAM
+                ui.vertical_centered(|ui| {
+                    ui.label("RAM Contents:");
+                    egui::ScrollArea::vertical()
+                        .id_source("ram")
+                        .min_scrolled_height(a_h)
+                        .show_rows(ui, height, cpu.ram.len(), |ui, row_range| {
+                            for i in row_range {
+                                let Some(value) = cpu.ram.get(i) else {
+                                    continue;
+                                };
+                                ui.label(format!("{:06x}: 0x{:08x}", i, value));
+                            }
+                        });
+                });
+            });
+            ui.separator();
+        });
+
         if self.running.load(Ordering::SeqCst) {
             ctx.request_repaint();
         }
@@ -214,7 +344,7 @@ fn main() -> Result<(), eframe::Error> {
         .unwrap();
     }
 
-    let cpu = cpu::CPU::new(initial_ram_content, log);
+    let cpu = cpu::CPU::new(initial_ram_content, log, 1.0);
     // self.cpu.execute_instruction(false, 0);
     return eframe::run_native(
         "SS32",
