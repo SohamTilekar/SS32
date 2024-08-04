@@ -8,10 +8,23 @@ pub struct CPU {
     pub ram: Box<[u32]>, // Allocating on the heap
     pub log: bool,
     seed: u32,
+    pub clock: u64,
+    pub clock_speed: f32,
+    pub l_executed_t: std::time::Instant,
+    pub hz: f64,
+    pub run_fast: bool,
+    pub last_update_time: std::time::Instant,
+    pub opcode: u32,
+    pub ir: u32,
+    pub dr: usize,
+    pub sr2: usize,
+    pub sr1: usize,
+    pub immediate: u32,
+    pub recent_memory_accesses: (u32, u32),
 }
 
 impl CPU {
-    pub fn new(initial_ram_content: Vec<u32>, log: bool) -> CPU {
+    pub fn new(initial_ram_content: Vec<u32>, log: bool, clock_speed: f32) -> CPU {
         if log {
             info!("Initializing CPU");
             debug!("Initialing 64MB RAM");
@@ -41,6 +54,19 @@ impl CPU {
             ram: ram.into_boxed_slice(),
             log,
             seed,
+            clock: 0,
+            clock_speed,
+            l_executed_t: std::time::Instant::now(),
+            hz: 0.0,
+            run_fast: false,
+            last_update_time: std::time::Instant::now(),
+            opcode: 0,
+            ir: 0,
+            dr: 0,
+            sr2: 0,
+            sr1: 0,
+            immediate: 0,
+            recent_memory_accesses: (0, 0),
         };
     }
     pub fn reset(&mut self) {
@@ -52,9 +78,20 @@ impl CPU {
         }
     }
     pub fn restart(&mut self) {
-        *self = CPU::new(Vec::new(), self.log);
+        let run_fast = self.run_fast;
+        *self = CPU::new(Vec::new(), self.log, self.clock_speed);
+        self.run_fast = run_fast;
+    }
+    fn set_ram(&mut self, address: usize, value: u32) {
+        self.recent_memory_accesses = (address as u32, value);
+        self.ram[address & 0xFFFFFF] = value;
+    }
+    fn get_ram(&mut self, address: usize) -> u32 {
+        self.recent_memory_accesses = (address as u32, self.ram[address & 0xFFFFFF]);
+        return self.ram[address & 0xFFFFFF];
     }
     pub fn execute_instruction(&mut self, interrupt: bool, _interrupt_number: u8) {
+        self.l_executed_t = std::time::Instant::now();
         if interrupt {}
         // Fetch instruction from memory
         if self.registers.pc >= self.ram.len() {
@@ -64,19 +101,31 @@ impl CPU {
             }
             std::process::exit(1);
         }
-        let instr = self.ram[self.registers.pc];
+        let instr = self.get_ram(self.registers.pc);
         if self.log {
             trace!("PC: {}, Instruction: {}", self.registers.pc, instr);
         }
         self.registers.pc += 1;
+        self.clock += 2;
         // Decode & Execute instruction
+        self.ir = instr;
         let opcode = instr >> 28 & 0x0F;
+        self.opcode = opcode;
         let dr: usize = ((instr >> 16) & 0x0F).try_into().unwrap();
+        self.dr = dr;
         let sr2: usize = ((instr >> 20) & 0x0F).try_into().unwrap();
+        self.sr2 = sr2;
         let sr1: usize = ((instr >> 24) & 0x0F).try_into().unwrap();
+        self.sr1 = sr1;
         let immediate: u32 = instr & 0xFFFFFF;
+        self.immediate = immediate;
         match opcode {
-            0 => { // NOP
+            0 => {
+                // NOP
+                if self.log {
+                    trace!("NOP");
+                }
+                self.clock += 1;
             }
             1 => {
                 // ALU Calculate
@@ -243,6 +292,7 @@ impl CPU {
                         std::process::exit(1);
                     }
                 }
+                self.clock += 1;
             }
             2 => {
                 // ALU Compare
@@ -301,6 +351,7 @@ impl CPU {
                         std::process::exit(1);
                     }
                 }
+                self.clock += 1;
             }
             3 => {
                 // Jump
@@ -386,7 +437,9 @@ impl CPU {
                             }
                             std::process::exit(1);
                         }
-                    }
+                    };
+                    self.clock += 1;
+                } else {
                     // Jump Register
                     let jmp_if = (instr >> 24) & 0x07;
                     if self.log {
@@ -469,11 +522,13 @@ impl CPU {
                             std::process::exit(1);
                         }
                     }
+                    self.clock += 1;
                 }
             }
             4 => {
                 // Load Full-bit
-                self.registers[dr] = self.ram[immediate as usize];
+                self.registers[dr] = self.get_ram(immediate as usize);
+                self.clock += 2;
                 if self.log {
                     trace!(
                         "Load Full-bit: Register[{}] = RAM[{}]",
@@ -484,13 +539,15 @@ impl CPU {
             }
             5 => {
                 // Load From Reg
-                self.registers[dr] = self.registers[sr2];
+                self.clock += 2;
+                self.registers[dr] = self.get_ram(self.registers[sr2] as usize);
                 if self.log {
                     trace!("Load From Reg: Register[{}] = Register[{}]", dr, sr2);
                 }
             }
             6 => {
                 // Load Immediate
+                self.clock += 1;
                 self.registers[dr] = immediate;
                 if self.log {
                     trace!("Load Immediate: Register[{}] = {}", dr, immediate);
@@ -498,14 +555,19 @@ impl CPU {
             }
             7 => {
                 // Store
-                self.ram[immediate as usize] = self.registers[sr1];
+                self.set_ram(immediate as usize, self.registers[sr1]);
+                self.clock += 1;
                 if self.log {
                     trace!("Store: RAM[{}] = Register[{}]", immediate as usize, sr1);
                 }
             }
             8 => {
                 // Store To
-                self.ram[(self.registers[sr2] & 0xFFFFFF) as usize] = self.registers[sr1];
+                self.set_ram(
+                    (self.registers[sr2] & 0xFFFFFF) as usize,
+                    self.registers[sr1],
+                );
+                self.clock += 1;
                 if self.log {
                     trace!(
                         "Store To: RAM[{}] = Register[{}]",
@@ -517,6 +579,7 @@ impl CPU {
             9 => {
                 // Mov
                 self.registers[dr] = self.registers[sr1];
+                self.clock += 1;
                 if self.log {
                     trace!("Mov: Register[{}] = Register[{}]", dr, sr1);
                 }
@@ -532,7 +595,7 @@ impl CPU {
                     0 => {
                         // Push
                         self.registers.sp = self.registers.sp.wrapping_sub(1);
-                        self.ram[(self.registers.sp & 0xFFFFFF) as usize] = self.registers[sr1];
+                        self.set_ram((self.registers.sp & 0xFFFFFF) as usize, self.registers[sr1]);
                         if self.log {
                             trace!(
                                 "Push: RAM[{}] = Register[{}]",
@@ -540,10 +603,11 @@ impl CPU {
                                 sr1
                             );
                         }
+                        self.clock += 1;
                     }
                     1 => {
                         // Pop
-                        self.registers[dr] = self.ram[(self.registers.sp & 0xFFFFFF) as usize];
+                        self.registers[dr] = self.get_ram((self.registers.sp & 0xFFFFFF) as usize);
                         self.registers.sp = self.registers.sp.wrapping_add(1);
                         if self.log {
                             trace!(
@@ -552,10 +616,11 @@ impl CPU {
                                 (self.registers.sp.wrapping_sub(1) & 0xFFFFFF) as usize
                             );
                         }
+                        self.clock += 1;
                     }
                     2 => {
                         // Top
-                        self.registers[dr] = self.ram[(self.registers.sp & 0xFFFFFF) as usize];
+                        self.registers[dr] = self.get_ram(self.registers.sp as usize);
                         if self.log {
                             trace!(
                                 "Top: Register[{}] = RAM[{}]",
@@ -563,6 +628,7 @@ impl CPU {
                                 self.registers.sp & 0xFFFFFF
                             );
                         }
+                        self.clock += 1;
                     }
                     3 => {
                         // Default 0
@@ -570,6 +636,7 @@ impl CPU {
                         if self.log {
                             trace!("Default 0: Register[{}] = 0", dr);
                         }
+                        self.clock += 1;
                     }
                     _ => {
                         println!("Invalid Stack opcode: {}", stack_op);
@@ -592,9 +659,9 @@ impl CPU {
                 if ret == 1 {
                     // Return
                     self.registers.pc =
-                        (self.ram[(self.registers.sp & 0xFFFFFF) as usize] & 0xFFFFFF) as usize;
+                        self.get_ram((self.registers.sp & 0xFFFFFF) as usize) as usize;
                     self.registers.sp = self.registers.sp.wrapping_add(1);
-                    let flags = self.ram[(self.registers.sp & 0xFFFFFF) as usize];
+                    let flags = self.get_ram((self.registers.sp & 0xFFFFFF) as usize);
                     self.registers.sp = self.registers.sp.wrapping_add(1);
                     self.registers.carry_f = flags & 0x01 == 1;
                     self.registers.zero_f = flags >> 1 & 0x01 == 1;
@@ -602,20 +669,24 @@ impl CPU {
                     if self.log {
                         trace!("Return: PC = {}, Flags = 0x{:X}", self.registers.pc, flags);
                     }
+                    self.clock += 2;
                 } else {
                     // Call
                     self.registers.sp = self.registers.sp.wrapping_sub(1);
-                    self.ram[(self.registers.sp & 0xFFFFFF) as usize] =
-                        (self.registers.pc & 0xFFFFFF) as u32;
+                    self.set_ram(
+                        (self.registers.sp & 0xFFFFFF) as usize,
+                        (self.registers.pc & 0xFFFFFF) as u32,
+                    );
                     self.registers.pc = immediate as usize;
                     self.registers.sp = self.registers.sp.wrapping_sub(1);
                     let flags = self.registers.carry_f as u32
                         | (self.registers.zero_f as u32) << 1
                         | (self.registers.comp_f as u32) << 2;
-                    self.ram[(self.registers.sp & 0xFFFFFF) as usize] = flags;
+                    self.set_ram((self.registers.sp & 0xFFFFFF) as usize, flags);
                     if self.log {
                         trace!("Call: PC = {}, Flags = 0x{:X}", immediate, flags);
                     }
+                    self.clock += 3;
                 }
             }
             14 => {
@@ -623,7 +694,7 @@ impl CPU {
                 let do_reti = instr >> 27 & 0x01;
                 if do_reti == 1 {
                     // Return from System Call
-                    let flags = self.ram[(self.registers.sp & 0xFFFFFF) as usize];
+                    let flags = self.get_ram((self.registers.sp & 0xFFFFFF) as usize);
                     self.registers.carry_f = flags & 0x01 == 1;
                     self.registers.zero_f = flags >> 1 & 0x01 == 1;
                     self.registers.comp_f = flags >> 2 & 0x01 == 1;
@@ -637,6 +708,7 @@ impl CPU {
                             flags
                         );
                     }
+                    self.clock += 3;
                 } else {
                     // System Call
                     self.registers.reti = self.registers.pc as u32;
@@ -644,10 +716,10 @@ impl CPU {
                         | (self.registers.zero_f as u32) << 1
                         | (self.registers.comp_f as u32) << 2;
                     self.registers.sp = self.registers.sp.wrapping_sub(1);
-                    self.ram[(self.registers.sp & 0xFFFFFF) as usize] = flags;
+                    self.set_ram((self.registers.sp & 0xFFFFFF) as usize, flags);
                     self.registers.privilege = true;
-                    self.registers.pc = (self.ram[0x40] & 0xFFFFFF) as usize;
-                    self.ram[0x41] = immediate;
+                    self.registers.pc = (self.get_ram(0x40) & 0xFFFFFF) as usize;
+                    self.set_ram(0x41, immediate);
                     if self.log {
                         trace!(
                             "System Call: PC = {}, Flags = 0x{:X}",
@@ -655,6 +727,7 @@ impl CPU {
                             flags
                         );
                     }
+                    self.clock += 3;
                 }
             }
             15 => {
@@ -662,7 +735,7 @@ impl CPU {
                 if self.log {
                     trace!("Halting CPU");
                 }
-                // println!("Halting CPU");
+                self.clock += 1;
                 // std::process::exit(0);
             }
             _ => {
@@ -670,7 +743,7 @@ impl CPU {
                 if self.log {
                     error!("Invalid opcode");
                 }
-                // std::process::exit(1);
+                std::process::exit(1);
             }
         }
     }
