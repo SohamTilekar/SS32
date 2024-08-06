@@ -1,3 +1,4 @@
+use cpu::CPUError;
 use eframe;
 use egui;
 use rfd::FileDialog;
@@ -17,6 +18,9 @@ static mut HZ: f64 = 0.0;
 struct GUI {
     cpu: Arc<Mutex<cpu::CPU>>,
     running: Arc<AtomicBool>,
+    search_ram: String,
+    error_pc_out_of_bounds: Arc<AtomicBool>,
+    error_halt: Arc<AtomicBool>,
 }
 
 impl GUI {
@@ -24,12 +28,17 @@ impl GUI {
         Self {
             cpu: Arc::new(Mutex::new(cpu)),
             running: Arc::new(AtomicBool::new(false)),
+            search_ram: String::new(),
+            error_pc_out_of_bounds: Arc::new(AtomicBool::new(false)),
+            error_halt: Arc::new(AtomicBool::new(false)),
         }
     }
 
     fn start_execution(&self) {
         let cpu_ref = Arc::clone(&self.cpu);
         let running = Arc::clone(&self.running);
+        let error_pc_out_of_bounds = Arc::clone(&self.error_pc_out_of_bounds);
+        let error_halt = Arc::clone(&self.error_halt);
         running.store(true, Ordering::SeqCst);
         thread::spawn(move || {
             while running.load(Ordering::SeqCst) {
@@ -39,7 +48,18 @@ impl GUI {
                     l_clock = cpu.clock;
                     // Assuming the cpu struct has a field `last_update_time` of type `std::time::Instant`
                     let x = 1e9 / (std::time::Instant::now() - cpu.l_executed_t).as_nanos() as f64;
-                    cpu.execute_instruction(false, 0);
+                    let error = cpu.execute_instruction(false, 0);
+                    match error {
+                        CPUError::Ok => {}
+                        CPUError::PcOutOfBounds => {
+                            running.store(false, Ordering::SeqCst);
+                            error_pc_out_of_bounds.store(true, Ordering::SeqCst);
+                        }
+                        CPUError::Halt => {
+                            // running.store(false, Ordering::SeqCst);
+                            // error_halt.store(true, Ordering::SeqCst);
+                        }
+                    }
                     let current_hz = x * (cpu.clock - l_clock) as f64;
                     let now = std::time::Instant::now();
                     if now.duration_since(cpu.last_update_time).as_secs() >= 1 {
@@ -113,7 +133,8 @@ fn display_image_from_u32_array(
 impl eframe::App for GUI {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         let mut cpu = self.cpu.lock().unwrap();
-
+        let error_pcob = Arc::clone(&self.error_pc_out_of_bounds);
+        let error_hlt = Arc::clone(&self.error_halt);
         // Top panel for general information and control buttons
         egui::TopBottomPanel::top("TopPanel").show(ctx, |ui| {
             ui.vertical_centered(|ui| {
@@ -138,9 +159,13 @@ impl eframe::App for GUI {
                         }
                     }
                     if ui.button("Reset").clicked() {
+                        self.error_pc_out_of_bounds.store(false, Ordering::SeqCst);
+                        self.error_halt.store(false, Ordering::SeqCst);
                         cpu.reset();
                     }
                     if ui.button("Restart").clicked() {
+                        self.error_pc_out_of_bounds.store(false, Ordering::SeqCst);
+                        self.error_halt.store(false, Ordering::SeqCst);
                         cpu.restart();
                     }
                     if ui.button("⬇ Load Ram").clicked() {
@@ -191,31 +216,36 @@ impl eframe::App for GUI {
                 ui.separator();
 
                 // Register Information Section
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("PC:");
-                        ui.monospace(format!("0x{:08x}", cpu.registers.pc));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("SP:");
-                        ui.monospace(format!("0x{:08x}", cpu.registers.sp));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("RETI:");
-                        ui.monospace(format!("0x{:08x}", cpu.registers.reti));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Privilege:");
-                        ui.monospace(format!("{}", cpu.registers.privilege));
-                    });
-                    for i in 0..16 {
-                        ui.horizontal(|ui| {
-                            ui.label(format!("R{}:", i));
-                            ui.monospace(format!("0x{:08x}", cpu.registers[i]));
-                        });
-                    }
-                    ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label("PC:");
+                    ui.monospace(format!("0x{:08x}", cpu.registers.pc));
                 });
+                ui.horizontal(|ui| {
+                    ui.label("SP:");
+                    ui.monospace(format!("0x{:08x}", cpu.registers.sp));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("RETI:");
+                    ui.monospace(format!("0x{:08x}", cpu.registers.reti));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Privilege:");
+                    ui.monospace(format!("{}", cpu.registers.privilege));
+                });
+                for i in 0..16 {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("R{}:", i));
+                        ui.monospace(format!("0x{:08x}", cpu.registers[i]));
+                    });
+                }
+                ui.separator();
+                if error_pcob.load(Ordering::SeqCst) {
+                    ui.label("Error: Program Count Out of Bound");
+                } else if error_hlt.load(Ordering::SeqCst) {
+                    ui.label("Error: CPU Halted");
+                } else {
+                    ui.label("Error: None");
+                }
             });
 
         // Central panel for additional information or logs if needed
@@ -254,10 +284,10 @@ impl eframe::App for GUI {
 
             ui.separator();
             let a_h = ui.available_height() - 20f32;
+            let height = egui::TextStyle::Body.resolve(ui.style()).size;
             ui.horizontal(|ui| {
                 // Stack
-                let height = egui::TextStyle::Body.resolve(ui.style()).size;
-                ui.vertical_centered(|ui| {
+                ui.vertical(|ui| {
                     ui.label("Stack Contents:");
                     egui::ScrollArea::vertical()
                         .id_source("stack")
@@ -278,19 +308,29 @@ impl eframe::App for GUI {
                 });
                 ui.separator();
                 // RAM
-                ui.vertical_centered(|ui| {
+                ui.vertical(|ui| {
                     ui.label("RAM Contents:");
-                    egui::ScrollArea::vertical()
-                        .id_source("ram")
-                        .min_scrolled_height(a_h)
-                        .show_rows(ui, height, cpu.ram.len(), |ui, row_range| {
-                            for i in row_range {
-                                let Some(value) = cpu.ram.get(i) else {
-                                    continue;
-                                };
-                                ui.label(format!("{:06x}: 0x{:08x}", i, value));
-                            }
-                        });
+                    let mut search: Option<u32> = None;
+                    if ui.text_edit_singleline(&mut self.search_ram).changed() {
+                        search = u32::from_str_radix(&self.search_ram, 16).ok();
+                        println!("Search: {:?}", self.search_ram);
+                    }
+                    let mut scroll_area = egui::ScrollArea::vertical();
+                    let height = egui::TextStyle::Body.resolve(ui.style()).size;
+                    if let Some(index) = search {
+                        let offset = (height + 10f32) * index as f32;
+                        println!("Offset: {}", offset);
+                        scroll_area = scroll_area.vertical_scroll_offset(offset);
+                    }
+                    scroll_area.show_rows(ui, height, cpu.ram.len(), |ui, row_range| {
+                        ui.allocate_space([ui.available_width(), 0.0].into());
+                        for i in row_range {
+                            let Some(value) = cpu.ram.get(i) else {
+                                continue;
+                            };
+                            ui.label(format!("{i:06x}: {value:08x}"));
+                        }
+                    })
                 });
             });
             ui.separator();
@@ -306,21 +346,18 @@ fn main() -> Result<(), eframe::Error> {
     let args: Vec<String> = env::args().collect();
     println!("Args: {:?}", args);
 
-    if args.len() < 2 {
-        eprintln!("Usage: <executable> <file.hex> [-L <file.log>]");
-        std::process::exit(1);
-    }
-
-    let input_path = Path::new(&args[1]); // Replace with your file path
-    let file = File::open(&input_path).unwrap();
-    let reader = io::BufReader::new(file);
-
     let mut initial_ram_content: Vec<u32> = Vec::new();
 
-    for line in reader.lines() {
-        let line = line.unwrap();
-        let number = u32::from_str_radix(&line, 16).expect("Failed to parse hex string");
-        initial_ram_content.push(number);
+    if args.len() > 1 {
+        let input_path = Path::new(&args[1]); // Replace with your file path
+        let file = File::open(&input_path).unwrap();
+        let reader = io::BufReader::new(file);
+
+        for line in reader.lines() {
+            let line = line.unwrap();
+            let number = u32::from_str_radix(&line, 16).expect("Failed to parse hex string");
+            initial_ram_content.push(number);
+        }
     }
 
     let mut log: bool = false;

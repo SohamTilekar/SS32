@@ -1,13 +1,17 @@
 use crate::cpu::registers::Registers;
 use log::{debug, error, info, trace};
-use rand::random;
 mod registers;
+
+pub enum CPUError {
+    Ok,
+    PcOutOfBounds,
+    Halt,
+}
 
 pub struct CPU {
     pub registers: Registers,
     pub ram: Box<[u32]>, // Allocating on the heap
     pub log: bool,
-    seed: u32,
     pub clock: u64,
     pub clock_speed: f32,
     pub l_executed_t: std::time::Instant,
@@ -33,15 +37,20 @@ impl CPU {
         if log {
             trace!("RAM Filled with random values");
         }
-        let mut value: u32 = random(); // Seed value
-        let seed = value;
+        // let mut value: u32 = random(); // Seed value
         for i in 0..16777216 {
             // Simple LCG formula: value = (value * 1664525 + 1013904223) % 2^32
             if i < initial_ram_content.len() {
                 ram.push(initial_ram_content[i]);
                 continue;
             }
-            value = value.wrapping_mul(1664525).wrapping_add(1013904223);
+            let value = rand::random();
+            // value = value.wrapping_mul(1664525).wrapping_add(1013904223);
+            // value = value ^ (value >> 16);
+            // value = value ^ (value >> 8);
+            // value = value ^ (value >> 4);
+            // value = value ^ (value >> 2);
+            // value = value ^ (value >> 1);
             ram.push(value);
         }
         if log {
@@ -53,7 +62,6 @@ impl CPU {
             registers: Registers::new(),
             ram: ram.into_boxed_slice(),
             log,
-            seed,
             clock: 0,
             clock_speed,
             l_executed_t: std::time::Instant::now(),
@@ -71,11 +79,6 @@ impl CPU {
     }
     pub fn reset(&mut self) {
         self.registers = Registers::new();
-        let mut value: u32 = self.seed;
-        for i in 0..16777216 {
-            value = value.wrapping_mul(1664525).wrapping_add(1013904223);
-            self.ram[i] = value;
-        }
     }
     pub fn restart(&mut self) {
         let run_fast = self.run_fast;
@@ -90,7 +93,7 @@ impl CPU {
         self.recent_memory_accesses = (address as u32, self.ram[address & 0xFFFFFF]);
         return self.ram[address & 0xFFFFFF];
     }
-    pub fn execute_instruction(&mut self, interrupt: bool, _interrupt_number: u8) {
+    pub fn execute_instruction(&mut self, interrupt: bool, _interrupt_number: u8) -> CPUError {
         self.l_executed_t = std::time::Instant::now();
         if interrupt {}
         // Fetch instruction from memory
@@ -99,7 +102,7 @@ impl CPU {
             if self.log {
                 error!("PC out of bounds");
             }
-            std::process::exit(1);
+            return CPUError::PcOutOfBounds;
         }
         let instr = self.get_ram(self.registers.pc);
         if self.log {
@@ -126,6 +129,7 @@ impl CPU {
                     trace!("NOP");
                 }
                 self.clock += 1;
+                return CPUError::Ok;
             }
             1 => {
                 // ALU Calculate
@@ -293,6 +297,7 @@ impl CPU {
                     }
                 }
                 self.clock += 1;
+                return CPUError::Ok;
             }
             2 => {
                 // ALU Compare
@@ -352,6 +357,7 @@ impl CPU {
                     }
                 }
                 self.clock += 1;
+                return CPUError::Ok;
             }
             3 => {
                 // Jump
@@ -439,6 +445,7 @@ impl CPU {
                         }
                     };
                     self.clock += 1;
+                    return CPUError::Ok;
                 } else {
                     // Jump Register
                     let jmp_if = (instr >> 24) & 0x07;
@@ -523,6 +530,7 @@ impl CPU {
                         }
                     }
                     self.clock += 1;
+                    return CPUError::Ok;
                 }
             }
             4 => {
@@ -536,6 +544,7 @@ impl CPU {
                         immediate as usize
                     );
                 }
+                return CPUError::Ok;
             }
             5 => {
                 // Load From Reg
@@ -544,6 +553,7 @@ impl CPU {
                 if self.log {
                     trace!("Load From Reg: Register[{}] = Register[{}]", dr, sr2);
                 }
+                return CPUError::Ok;
             }
             6 => {
                 // Load Immediate
@@ -552,6 +562,7 @@ impl CPU {
                 if self.log {
                     trace!("Load Immediate: Register[{}] = {}", dr, immediate);
                 }
+                return CPUError::Ok;
             }
             7 => {
                 // Store
@@ -560,6 +571,7 @@ impl CPU {
                 if self.log {
                     trace!("Store: RAM[{}] = Register[{}]", immediate as usize, sr1);
                 }
+                return CPUError::Ok;
             }
             8 => {
                 // Store To
@@ -575,6 +587,7 @@ impl CPU {
                         sr1
                     );
                 }
+                return CPUError::Ok;
             }
             9 => {
                 // Mov
@@ -583,8 +596,11 @@ impl CPU {
                 if self.log {
                     trace!("Mov: Register[{}] = Register[{}]", dr, sr1);
                 }
+                return CPUError::Ok;
             }
-            10 | 11 => {}
+            10 | 11 => {
+                return CPUError::Ok;
+            }
             12 => {
                 // Stack Operation
                 let stack_op = (instr >> 22) & 0x03;
@@ -604,6 +620,7 @@ impl CPU {
                             );
                         }
                         self.clock += 1;
+                        return CPUError::Ok;
                     }
                     1 => {
                         // Pop
@@ -617,6 +634,7 @@ impl CPU {
                             );
                         }
                         self.clock += 1;
+                        return CPUError::Ok;
                     }
                     2 => {
                         // Top
@@ -629,6 +647,7 @@ impl CPU {
                             );
                         }
                         self.clock += 1;
+                        return CPUError::Ok;
                     }
                     3 => {
                         // Default 0
@@ -637,6 +656,7 @@ impl CPU {
                             trace!("Default 0: Register[{}] = 0", dr);
                         }
                         self.clock += 1;
+                        return CPUError::Ok;
                     }
                     _ => {
                         println!("Invalid Stack opcode: {}", stack_op);
@@ -670,6 +690,7 @@ impl CPU {
                         trace!("Return: PC = {}, Flags = 0x{:X}", self.registers.pc, flags);
                     }
                     self.clock += 2;
+                    return CPUError::Ok;
                 } else {
                     // Call
                     self.registers.sp = self.registers.sp.wrapping_sub(1);
@@ -687,6 +708,7 @@ impl CPU {
                         trace!("Call: PC = {}, Flags = 0x{:X}", immediate, flags);
                     }
                     self.clock += 3;
+                    return CPUError::Ok;
                 }
             }
             14 => {
@@ -709,6 +731,7 @@ impl CPU {
                         );
                     }
                     self.clock += 3;
+                    return CPUError::Ok;
                 } else {
                     // System Call
                     self.registers.reti = self.registers.pc as u32;
@@ -728,6 +751,7 @@ impl CPU {
                         );
                     }
                     self.clock += 3;
+                    return CPUError::Ok;
                 }
             }
             15 => {
@@ -736,7 +760,7 @@ impl CPU {
                     trace!("Halting CPU");
                 }
                 self.clock += 1;
-                // std::process::exit(0);
+                return CPUError::Halt;
             }
             _ => {
                 println!("Invalid opcode");
